@@ -35,6 +35,17 @@ from llmfoundry.utils.exceptions import (
     TrainDataLoaderLocation,
 )
 
+# xla check
+from composer.utils import is_xla_installed
+from composer.utils import is_xla_installed
+if is_xla_installed():
+    import torch_xla.runtime as xr
+    import torch_xla.distributed.xla_multiprocessing as xmp
+    # SPMD w/ FSDP
+    from torch_xla.experimental.spmd_fully_sharded_data_parallel import SpmdFullyShardedDataParallel as FSDPv2
+    import torch_xla.distributed.spmd as xs
+    xr.use_spmd()
+
 install()
 
 from llmfoundry.callbacks import AsyncEval
@@ -164,6 +175,9 @@ def validate_config(train_config: TrainConfig):
         if seq_parallel_world_size is not None:
             raise ValueError('Training does not support sequence parallelism.')
 
+def shard_output(output, mesh):
+    if is_xla_installed():
+        xs.mark_sharding(output.logits, mesh, ('fsdp', None, None))
 
 def _log_num_params(model: ComposerModel, logged_cfg: Dict[str, Any]):
     # Log number of parameters
@@ -459,6 +473,17 @@ def main(cfg: DictConfig) -> Trainer:
         master_weights_dtype=model_config.get('master_weights_dtype', None),
         cfg=model_config,
     )
+    
+    # Use SPMD w/ FSDP for training on TPUs
+    if is_xla_installed():
+        # SPMD w/ FSDP
+        n_devices = xr.global_runtime_device_count()
+        mesh_shape = (n_devices, 1, 1, 1)
+        mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', 'heads', 'sequences', 'dims'))
+        model = FSDPv2(model, mesh=mesh, shard_output=shard_output)
+        device_trainer = 'tpu'
+    else:
+        device_trainer = None
 
     _log_num_params(model, logged_cfg)
 
@@ -525,6 +550,7 @@ def main(cfg: DictConfig) -> Trainer:
         dist_timeout=train_cfg.dist_timeout,
         profiler=profiler,
         compile_config=compile_config,
+        device=device_trainer,
     )
 
     if train_cfg.log_config:
@@ -541,8 +567,12 @@ def main(cfg: DictConfig) -> Trainer:
     trainer.fit()
 
     log.info('Done.')
-    return trainer
+    
+    if not is_xla_installed():
+        return trainer
 
+def _mp_fn (index, cfg: DictConfig) -> Trainer:
+    main(cfg)
 
 if __name__ == '__main__':
     yaml_path, args_list = sys.argv[1], sys.argv[2:]
@@ -557,4 +587,10 @@ if __name__ == '__main__':
     cfg = om.merge(yaml_cfg, cli_cfg)
     om.resolve(cfg)
     assert isinstance(cfg, DictConfig)
-    main(cfg)
+    # Add conditional logic for TPU with XLA 
+    if is_xla_installed() and xr.global_runtime_device_count() > 8:
+        xmp.spawn(_mp_fn, args=(cfg,), nprocs=None)
+    elif is_xla_installed():
+        _mp_fn(index=0, cfg=cfg)
+    else:    
+        main(cfg)
