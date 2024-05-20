@@ -31,6 +31,9 @@ from composer.utils import dist
 from llmfoundry.layers_registry import ffns_with_megablocks
 from llmfoundry.models.layers.attention import is_flash_v2_installed
 
+# xla check
+from composer.utils import is_xla_installed
+
 if is_flash_v2_installed():
     try:  # This try...except is needed because transformers requires it despite the 'if' statement above
         from flash_attn import bert_padding
@@ -244,6 +247,8 @@ def gen_flash_attn_padding_info(
     attention_mask: Optional[torch.Tensor] = None,
 ):
     flash_attn_padding_info = {}
+    if is_xla_installed():
+        return flash_attn_padding_info
     if attention_mask_in_length is None:
         key_padding_mask = attention_mask
         if key_padding_mask is None:
@@ -1167,6 +1172,9 @@ class ComposerMPTCausalLM(HuggingFaceModel):
             outputs.logits.view(-1, outputs.logits.size(-1)),
             targets.view(-1),
         )
+        
+        if is_xla_installed():
+            return {'total' : self.loss_fn(outputs.logits.view(-1, outputs.logits.size(-1)), targets.view(-1))}
 
         if torch.all(targets == self.loss_fn.ignore_index):
             loss = losses.sum()

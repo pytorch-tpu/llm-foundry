@@ -7,6 +7,9 @@ import torch
 
 from llmfoundry.layers_registry import norms
 
+# xla check
+from composer.utils import is_xla_installed
+
 __all__ = [
     'LPLayerNorm',
     'LPRMSNorm',
@@ -50,6 +53,8 @@ class LPLayerNorm(torch.nn.LayerNorm):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if is_xla_installed():
+            return torch.nn.functional.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.eps)
         module_device = x.device
         downcast_x = _cast_if_autocast_enabled(x)
         downcast_weight = _cast_if_autocast_enabled(
@@ -100,6 +105,8 @@ class RMSNorm(torch.nn.Module):
             self.register_parameter('weight', None)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if is_xla_installed():
+            return rms_norm(x, self.weight, self.eps).to(dtype=x.dtype)
         return rms_norm(x.float(), self.weight, self.eps).to(dtype=x.dtype)
 
 
@@ -123,6 +130,8 @@ class LPRMSNorm(RMSNorm):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if is_xla_installed():
+            return rms_norm(x, self.weight, self.eps).to(dtype=x.dtype)
         downcast_x = _cast_if_autocast_enabled(x)
         downcast_weight = _cast_if_autocast_enabled(
             self.weight,
