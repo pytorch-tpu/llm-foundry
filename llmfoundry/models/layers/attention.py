@@ -529,9 +529,9 @@ class GroupedQueryAttention(nn.Module):
             import jax
 
             jax.config.update('jax_default_matmul_precision', jax.lax.Precision.HIGHEST)
-            n_devices = xr.global_runtime_device_count()
-            mesh_shape = (n_devices, 1, 1, 1) # (1, n_devices // 2, 2)
-            mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', 'heads', 'sequences', 'dims'))
+            #n_devices = xr.global_runtime_device_count()
+            #mesh_shape = (n_devices, 1, 1, 1) # (1, n_devices // 2, 2)
+            #mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', 'heads', 'sequences', 'dims'))
             attn_weights = None
             past_key_value = None
             # Definition of JAX flash_attenion: https://github.com/google/jax/blob/main/jax/experimental/pallas/ops/tpu/flash_attention.py
@@ -540,14 +540,13 @@ class GroupedQueryAttention(nn.Module):
             k = rearrange(key, 'b s (h d) -> b h s d', h=self.kv_n_heads)
             v = rearrange(value, 'b s (h d) -> b h s d', h=self.kv_n_heads)
             print (f'Update query shape is {q.shape}')
-            partition_spec=('fsdp', 'heads', 'sequences', 'dims')
             context = flash_attention_xla(
                 q=q,
                 k=k,
                 v=v,
-                causal=is_causal,
-                partition_spec=partition_spec,
-                mesh=mesh,
+                #causal=is_causal,
+                #partition_spec=partition_spec,
+                #mesh=mesh,
             )
             jax.config.update('jax_default_matmul_precision', jax.lax.Precision.DEFAULT)
 

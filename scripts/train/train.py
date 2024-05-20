@@ -479,8 +479,21 @@ def main(cfg: DictConfig) -> Trainer:
         # SPMD w/ FSDP
         n_devices = xr.global_runtime_device_count()
         mesh_shape = (n_devices, 1, 1, 1)
-        mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', 'heads', 'sequences', 'dims'))
-        model = FSDPv2(model, mesh=mesh, shard_output=shard_output)
+        partition_spec = ('fsdp', 'heads', 'sequences', 'dims')
+        xs.set_global_mesh(xs.Mesh(range(n_devices), mesh_shape, partition_spec)) #mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', None, None))
+        model = FSDPv2(model, shard_output=shard_output)
+        device_trainer = 'tpu'
+    else:
+        device_trainer = None
+
+    # Use SPMD w/ FSDP for training on TPUs
+    if is_xla_installed():
+        # SPMD w/ FSDP
+        n_devices = xr.global_runtime_device_count()
+        mesh_shape = (n_devices, 1, 1, 1)
+        partition_spec = ('fsdp', 'heads', 'sequences', 'dims')
+        xs.set_global_mesh(xs.Mesh(range(n_devices), mesh_shape, partition_spec)) #mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', None, None))
+        model = FSDPv2(model, shard_output=shard_output) #mesh=mesh
         device_trainer = 'tpu'
     else:
         device_trainer = None
