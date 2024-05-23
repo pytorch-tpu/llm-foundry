@@ -1128,13 +1128,16 @@ class ComposerMPTCausalLM(HuggingFaceModel):
         loss_fn_config = loss_fn
         if loss_fn_config == 'fused_crossentropy':
             try:
-                from flash_attn.losses.cross_entropy import \
-                    CrossEntropyLoss as FusedCrossEntropyLoss
+                if is_xla_installed():
+                    self.loss_fn = nn.CrossEntropyLoss()
+                else:
+                    from flash_attn.losses.cross_entropy import \
+                        CrossEntropyLoss as FusedCrossEntropyLoss
 
-                self.loss_fn = FusedCrossEntropyLoss(
-                    ignore_index=-100,
-                    reduction='none',
-                )
+                    self.loss_fn = FusedCrossEntropyLoss(
+                        ignore_index=-100,
+                        reduction='none',
+                    )
             except:
                 raise ValueError(
                     'Fused Cross Entropy is not installed. Either (1) have a CUDA-compatible GPU '
