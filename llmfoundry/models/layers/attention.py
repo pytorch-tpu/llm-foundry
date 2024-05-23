@@ -26,6 +26,11 @@ from composer.utils import is_xla_installed
 if is_xla_installed():
     import torch_xla.runtime as xr
     import torch_xla.distributed.spmd as xs
+    from torch_xla.experimental.custom_kernel import flash_attention as flash_attention_xla
+    # Somehow, we need to grab the TPU before JAX locks it. Otherwise, any pt-xla TPU operations will hang.
+    import torch_xla
+    torch_xla._XLAC._init_computation_client()
+    import jax
 
 __all__ = [
     'scaled_multihead_dot_product_attention',
@@ -525,9 +530,6 @@ class GroupedQueryAttention(nn.Module):
         query, key, value = self.get_qkv(x)
 
         if is_xla_installed():
-            from torch_xla.experimental.custom_kernel import flash_attention as flash_attention_xla
-            import jax
-
             jax.config.update('jax_default_matmul_precision', jax.lax.Precision.HIGHEST)
             #n_devices = xr.global_runtime_device_count()
             #mesh_shape = (n_devices, 1, 1, 1) # (1, n_devices // 2, 2)
@@ -548,12 +550,13 @@ class GroupedQueryAttention(nn.Module):
                 #partition_spec=partition_spec,
                 #mesh=mesh,
             )
-            jax.config.update('jax_default_matmul_precision', jax.lax.Precision.DEFAULT)
-            
+
             # Revert shape back to original input
             out = rearrange(context, 'b h s d -> b s (h d)', h=self.kv_n_heads).to('xla')
-
-            return self.out_proj(context), attn_weights, past_key_value
+           
+            jax.config.update('jax_default_matmul_precision', jax.lax.Precision.DEFAULT)
+           
+            return self.out_proj(out), attn_weights, past_key_value
 
         if rotary_emb_w_meta_info is not None:
             query, key, value = self._apply_rotary_embeddings(
