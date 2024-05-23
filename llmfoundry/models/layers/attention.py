@@ -544,11 +544,14 @@ class GroupedQueryAttention(nn.Module):
                 q=q,
                 k=k,
                 v=v,
-                #causal=is_causal,
+                causal=is_causal,
                 #partition_spec=partition_spec,
                 #mesh=mesh,
             )
             jax.config.update('jax_default_matmul_precision', jax.lax.Precision.DEFAULT)
+            
+            # Revert shape back to original input
+            out = rearrange(context, 'b h s d -> b s (h d)', h=self.kv_n_heads).to('xla')
 
             return self.out_proj(context), attn_weights, past_key_value
 

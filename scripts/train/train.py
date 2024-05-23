@@ -39,6 +39,7 @@ from llmfoundry.utils.exceptions import (
 from composer.utils import is_xla_installed
 from composer.utils import is_xla_installed
 if is_xla_installed():
+    import numpy as np
     import torch_xla.runtime as xr
     import torch_xla.distributed.xla_multiprocessing as xmp
     # SPMD w/ FSDP
@@ -177,7 +178,9 @@ def validate_config(train_config: TrainConfig):
 
 def shard_output(output, mesh):
     if is_xla_installed():
-        xs.mark_sharding(output.logits, mesh, ('fsdp', None, None))
+        partition_spec = ('fsdp', None, None)
+        mesh = xs.get_global_mesh()
+        xs.mark_sharding(output.logits, mesh, partition_spec)
 
 def _log_num_params(model: ComposerModel, logged_cfg: Dict[str, Any]):
     # Log number of parameters
@@ -478,10 +481,12 @@ def main(cfg: DictConfig) -> Trainer:
     if is_xla_installed():
         # SPMD w/ FSDP
         n_devices = xr.global_runtime_device_count()
-        mesh_shape = (n_devices, 1, 1, 1)
-        partition_spec = ('fsdp', 'heads', 'sequences', 'dims')
-        xs.set_global_mesh(xs.Mesh(range(n_devices), mesh_shape, partition_spec)) #mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', None, None))
-        model = FSDPv2(model, shard_output=shard_output) #mesh=mesh
+        mesh_shape = (n_devices, 1,1,1)
+        mesh_spec = ('fsdp', 'tensor', 'sequences', 'dims')
+        device_ids = np.array(range(n_devices))
+        xs.set_global_mesh(xs.Mesh(device_ids, mesh_shape, mesh_spec))
+        model = FSDPv2(model, shard_output=shard_output)
+        print ('model initialized with FSDPv2')
         device_trainer = 'tpu'
     else:
         device_trainer = None

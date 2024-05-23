@@ -9,7 +9,7 @@ run_name:  # If left blank, will be read from env var $RUN_NAME
 # Model
 model:
   name: mpt_causal_lm
-  init_device: meta
+  init_device: xla
   d_model: 128
   ffn_config:
     ffn_type: mb_dmoe
