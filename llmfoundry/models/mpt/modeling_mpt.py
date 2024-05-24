@@ -1129,7 +1129,10 @@ class ComposerMPTCausalLM(HuggingFaceModel):
         if loss_fn_config == 'fused_crossentropy':
             try:
                 if is_xla_installed():
-                    self.loss_fn = nn.CrossEntropyLoss()
+                    self.loss_fn = nn.CrossEntropyLoss(
+                        ignore_index=-100,
+                        reduction='none',
+                    )
                 else:
                     from flash_attn.losses.cross_entropy import \
                         CrossEntropyLoss as FusedCrossEntropyLoss
