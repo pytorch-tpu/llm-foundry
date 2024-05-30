@@ -530,7 +530,7 @@ class GroupedQueryAttention(nn.Module):
         query, key, value = self.get_qkv(x)
 
         if is_xla_installed():
-            jax.config.update('jax_default_matmul_precision', jax.lax.Precision.HIGHEST)
+            #jax.config.update('jax_default_matmul_precision', jax.lax.Precision.HIGHEST)
             #n_devices = xr.global_runtime_device_count()
             #mesh_shape = (n_devices, 1, 1, 1) # (1, n_devices // 2, 2)
             #mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', 'heads', 'sequences', 'dims'))
@@ -554,7 +554,7 @@ class GroupedQueryAttention(nn.Module):
             # Revert shape back to original input
             out = rearrange(context, 'b h s d -> b s (h d)', h=self.kv_n_heads).to('xla')
            
-            jax.config.update('jax_default_matmul_precision', jax.lax.Precision.DEFAULT)
+            #jax.config.update('jax_default_matmul_precision', jax.lax.Precision.DEFAULT)
            
             return self.out_proj(out), attn_weights, past_key_value
 
